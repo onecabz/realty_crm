@@ -19,6 +19,9 @@
 --
 -- Table structure for table `law`
 --
+DROP DATABASE IF EXISTS realty_newone;
+CREATE DATABASE realty_newone;
+USE realty_newone;
 
 DROP TABLE IF EXISTS `law`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
