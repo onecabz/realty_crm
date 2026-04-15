@@ -336,3 +336,21 @@ SET
 	is_active = 'действующий'
 WHERE 
 ;
+
+
+SELECT count(*)
+FROM objects
+JOIN owners
+WHERE objects.object_owner_id = owners.id
+;
+
+
+SELECT *
+FROM objects
+JOIN owners ON objects.object_owner_id = owners.id
+;
+
+SELECT *
+FROM objects
+LEFT OUTER JOIN owners ON objects.object_owner_id = owners.id
+;
