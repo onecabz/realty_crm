@@ -334,15 +334,12 @@ VALUES
 UPDATE laws
 SET
 	is_active = 'действующий'
-WHERE 
 ;
-
 
 SELECT count(*)
 FROM objects
 JOIN owners
-WHERE objects.object_owner_id = owners.id
-;
+WHERE objects.object_owner_id = owners.id;
 
 
 SELECT *
@@ -353,4 +350,106 @@ JOIN owners ON objects.object_owner_id = owners.id
 SELECT *
 FROM objects
 LEFT OUTER JOIN owners ON objects.object_owner_id = owners.id
+	UNION
+SELECT *
+FROM objects
+LEFT OUTER JOIN owners ON objects.object_owner_id = owners.id
+;
+
+# SELECT с применением вложенных скореллированных запросов
+SELECT
+	kadastr_num AS 'кадастровый номер',
+	object_type AS 'тип сооружения',
+	object_name AS 'наименование',
+	(SELECT name FROM owners WHERE object_owner_id = owners.id) AS 'балансодержатель',
+	(SELECT inn FROM owners WHERE object_owner_id = owners.id) AS 'ИНН'
+FROM objects
+WHERE id = 96
+;
+
+# SELECT с JOIN`ами вместо применения вложенных скореллированных запросов
+SELECT
+	kadastr_num AS 'кадастровый номер',
+	object_type AS 'тип сооружения',
+	object_name AS 'наименование',
+	owners.ogrn AS 'ОГРН',
+	owners.inn AS 'ИНН',
+	owners.name AS 'балансодержатель',
+	laws.right_type AS 'тип права',
+	laws.law_registration_date
+	#(SELECT name FROM owners WHERE object_owner_id = owners.id) AS 'балансодержатель',
+	#(SELECT inn FROM owners WHERE object_owner_id = owners.id) AS 'ИНН'
+FROM objects
+JOIN owners ON objects.object_owner_id = owners.id
+JOIN laws ON laws.object_id = objects.id
+WHERE objects.kadastr_num = '24:56:0201008:1256'
+;
+
+SELECT
+	ROW_NUMBER() OVER() AS rn,
+	COUNT(*) AS cnt,
+	object_type
+FROM objects
+GROUP BY object_type
+ORDER BY rn;
+
+# SELECT запрос с оконной функцией PARTITION BY c cозданием функции ROW_NUMBER() OVER() для создания столбца с сквозной нумерацией 
+SELECT DISTINCT
+	ROW_NUMBER() OVER() AS rn,
+	COUNT(*) OVER (PARTITION BY object_type) AS cnt,
+	#COUNT(*) OVER (PARTITION BY object_owner_id) AS owner_id,
+	object_type
+	#object_name,
+	#kadastr_num
+FROM objects
+ORDER BY rn
+;
+
+# самый простой SELECT запрос с оконной функцией PARTITION BY
+SELECT DISTINCT
+	COUNT(*) OVER (PARTITION BY object_type) AS cnt,
+	object_type
+FROM objects
+;
+
+# SELECT запрос с оконной функцией PARTITION BY c cозданием alias для формируемого окна и применением в запросе уже alias, а не самого окна
+
+SELECT DISTINCT
+	COUNT(*) OVER win_1 AS cnt,
+	object_type
+FROM objects
+WINDOW win_1 AS (PARTITION BY object_type)
+ORDER BY cnt DESC
+;
+
+
+
+# SELECT запрос с применением CTE (COMMON TABLE EXPRESSIONS) общие табличные выражения
+WITH cte_2 AS (
+	SELECT
+		id,
+		name,
+		inn
+	FROM owners
+)
+SELECT *
+FROM cte_2
+JOIN objects AS obj ON obj.object_owner_id = cte_2.id
+WHERE object_owner_id = 2
+;
+
+# 
+SELECT *
+FROM objects
+WHERE kadastr_num LIKE '%42:%'
+;
+
+# Полнотекстовый поиск
+# Сначала создаём индекс для столбцов, которые хотим индексировать
+CREATE FULLTEXT INDEX full_body_indx_adressfor ON objects(adress);
+
+# После создания полнотекстового индекса можем использовать следующую конструкцию запроса
+SELECT *
+FROM objects
+WHERE MATCH(adress) AGAINST('+Минусин* -Комаров*' IN BOOLEAN MODE)
 ;
