@@ -287,9 +287,6 @@ VALUES
 (2,'24:50:0000000:26797','Здание','Столярная мастерская','Промышленные здания',80,1998,'Россия, Красноярский край, г. Красноярск, пр-кт Свободный, № 95','П12000002590',108712),#,'24:01:36.2004:956',23.05.2005,'Акт приемки законченного строительством объекта от 09.09.1998','КГАУ "РЦСП "Академия летних видов спорта"','оперативное управление','24:01:36.2004:957',23.05.2005,'Приказ управления имущественных отношений администрации Красноярского края от 18.10.2004 № 06-1258п,  Приказ управления имущественных отношений администрации Красноярского края от 09.03.2005 № 06-172п',,'38246,97',,
 (2,'24:53:0110365:5796','Сооружение','Наружные сети электроснабжения','1.1. Сооружения электроэнергетики',138,2022,'Российская Федерация, Красноярский край, г. Минусинск, ул. Трегубенко, д. 63 Б','П12000012395',2518124.62); #','24:53:0110365:5796-24/095/2023-1',14.03.2023,'Разрешение на ввод объекта в эксплуатацию, № 24-RU24310000-54-2022, выдан 19.12.2022','КГАУ "ЦСП"','оперативное управление','24:53:0110365:5796-24/122/2023-2',13.04.2023,'Приказ агентства по управлению государственным имуществом Красноярского края от 07.04.2023 № 11-452п',,'2057667,66',,
 
-
-
-
 INSERT INTO laws (object_id, owner_id, right_type, law_registration_date, owner_registration_number, owner_right_document)
 VALUES
 (
@@ -413,7 +410,6 @@ FROM objects
 ;
 
 # SELECT запрос с оконной функцией PARTITION BY c cозданием alias для формируемого окна и применением в запросе уже alias, а не самого окна
-
 SELECT DISTINCT
 	COUNT(*) OVER win_1 AS cnt,
 	object_type
@@ -509,3 +505,119 @@ SHOW GRANTS FOR CURRENT_USER();
 # Подсмотрел текущего user
 SELECT CURRENT_USER();
 
+# Подсмотрел параметры текущего user
+SHOW CREATE USER CURRENT_USER();
+
+# Создание PROCEDURE с аргументом
+
+DROP PROCEDURE IF EXISTS proc_3;
+
+CREATE DEFINER=`root`@`%`
+PROCEDURE `realty_v04`.`proc_3`(arg INT)
+
+
+#CREATE PROCEDURE realty_v04.proc_3(arg int)
+BEGIN
+	SELECT `kadastr_num`, `adress`, `space`
+	FROM `objects`
+		UNION DISTINCT
+	SELECT `name`, `inn`, `ogrn`
+	FROM `owners`
+	ORDER BY rand()
+	LIMIT arg;
+END
+
+CALL proc_3(13);
+
+
+# Создание PROCEDURE (ROUTINE TYPE = FUNCTION)
+DROP FUNCTION IF EXISTS func_1;
+
+CREATE DEFINER=`root`@`%`
+FUNCTION `realty_v04`.`func_1`()
+RETURNS FLOAT READS SQL DATA #DETERMINISTIC, NO SQL, READS SQL DATA
+
+BEGIN
+	DECLARE buildings_count INT;
+	DECLARE all_type_buildings_count INT;
+	DECLARE buildings_proc FLOAT;
+	
+	SET buildings_count = (
+		SELECT count(*)
+		FROM objects
+		WHERE object_type = "Сооружение"
+	);
+	
+	SET all_type_buildings_count = (
+		SELECT count(*)
+		FROM objects
+	);
+	
+	SET buildings_proc = buildings_count / all_type_buildings_count;
+	
+	RETURN buildings_proc;
+END
+
+# Вызываем функцию func_1 через SELECT, а не CALL
+SELECT func_1();
+
+# Инициализируем переменную 'color' и через '=' присваиваем ей значение
+SET @`color` = 'red';
+
+# или моржом ':='
+SET @`color` := 'red';
+
+# Получаем значение переменной 'color'
+SELECT @color;
+
+# Можно и 'нетрадиционным' присвоить переменной 'color' значение: через SELECT запрос
+SELECT @color := 1;
+
+# Например
+SELECT
+	@id := id,
+	@name := name
+FROM owners
+WHERE id = 1;
+
+# или посредством INTO
+SELECT id, name
+INTO
+	@id,
+	@name
+FROM owners
+WHERE id = 1;
+
+# Посредством SELECT запроса получаем данные созданных переменных 'id','name'
+SELECT @id, @name;
+
+# Посмотрели все переменные
+SHOW VARIABLES;
+
+# Посмотрели переменную по её имени
+SHOW VARIABLES LIKE 'log_bin';
+
+# Посмотрели переменную для всех пользователей по её имени
+SHOW GLOBAL VARIABLES LIKE 'log_bin';
+
+# Посмотрели переменную по её имени
+SHOW GLOBAL VARIABLES LIKE 'log_bin';
+
+# Посмотрели переменную по её имени для текущего пользователя
+SHOW SESSION VARIABLES LIKE 'log_bin';
+
+# Задали новое значение переменной для текущего пользователя
+SET @@log_bin = 0;
+
+# Задали новое значение переменной для всех пользователей
+SET GLOBAL log_bin = 0;
+
+# Присвоили (получили извне) owner_id и object_id, которыt хотим проверить на предмет, что 
+SET @owner_id = 4;
+SET @object_id = 269;
+
+SELECT @owner_id = (
+	SELECT object_owner_id
+	FROM objects;
+	WHERE id = @object_id
+);
