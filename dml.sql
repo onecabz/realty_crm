@@ -289,6 +289,7 @@ VALUES
 
 
 
+
 INSERT INTO laws (object_id, owner_id, right_type, law_registration_date, owner_registration_number, owner_right_document)
 VALUES
 (
@@ -328,7 +329,6 @@ VALUES
 '24-24-01/264/2012-112',
 'Приказ агентства по управлению государственным имуществом от 23.08.2012 №06-1191п')
 ;
-
 
 
 UPDATE laws
@@ -453,3 +453,59 @@ SELECT *
 FROM objects
 WHERE MATCH(adress) AGAINST('+Минусин* -Комаров*' IN BOOLEAN MODE)
 ;
+
+# Создание View (представление, сохранённые именованные запросы (в разделе Views дерева объектов)
+CREATE OR REPLACE VIEW objects_lo_join AS
+	SELECT
+		objects.id AS obj_id, object_owner_id, kadastr_num, object_type, object_name, assignment, space, longness, liter, build_year, objects.adress, rnki_number, carrying_ammount, objects.is_active, objects.status_date,
+		owners.id AS own_id, name, inn, ogrn, telephone, email
+	FROM objects
+	LEFT OUTER JOIN owners ON owners.id = objects.object_owner_id
+	ORDER BY name
+	;
+
+# Использование созданной View`шки
+SELECT *
+FROM objects_lo_join
+WHERE object_type = 'сооружение'
+;
+
+# Создание хранимых процедур ROUTINES (ROUTINE TYPE = PROCEDURE)
+# Создание временного делимитера (разделителя команд, вместо ';') для того чтобы внутри команды по созданию процедуры мы могли применять ';'
+# Команда DELIMITER не исполняется сервером MySQL, а предназначена для CLI MySQL и DBeaver
+USE realty_v04;
+
+DELIMITER $$
+
+CREATE PROCEDURE proc_1()
+BEGIN
+	SELECT 111;
+	SELECT 222;
+END$$
+
+DELIMITER ;
+
+# Error, которую ловил, в попытке создать PROCEDURE 'proc' путём применения DELIMITER и исполнения execute SQL Query (Ctrl+Enter), а не execute SQL Script (Alt+X)
+SQL Error [1305] [42000]: PROCEDURE realty_v04.proc does not exist
+
+# Посмотрел сведения о PROCEDURE 'proc'
+SHOW PROCEDURE STATUS WHERE Name = 'proc';
+
+# Вызов PROCEDURE 'proc'
+CALL proc();
+
+# Посмотрел установленное значение переменной 'automatic_sp_privileges'
+SHOW VARIABLES LIKE 'automatic_sp_privileges';
+
+# Установлена переменная 'automatic_sp_privileges' в значении 1 (ON)
+SET GLOBAL automatic_sp_privileges = 1;
+
+# Посмотрел созданные ROUTINES (ROUTINE TYPE = PROCEDURE)
+SELECT * FROM information_schema.ROUTINES WHERE ROUTINE_SCHEMA = 'realty_v04' AND ROUTINE_TYPE = 'PROCEDURE';
+
+# Посмотрел права для текущего user`a
+SHOW GRANTS FOR CURRENT_USER();
+
+# Подсмотрел текущего user
+SELECT CURRENT_USER();
+
