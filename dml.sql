@@ -287,6 +287,7 @@ VALUES
 (2,'24:50:0000000:26797','Здание','Столярная мастерская','Промышленные здания',80,1998,'Россия, Красноярский край, г. Красноярск, пр-кт Свободный, № 95','П12000002590',108712),#,'24:01:36.2004:956',23.05.2005,'Акт приемки законченного строительством объекта от 09.09.1998','КГАУ "РЦСП "Академия летних видов спорта"','оперативное управление','24:01:36.2004:957',23.05.2005,'Приказ управления имущественных отношений администрации Красноярского края от 18.10.2004 № 06-1258п,  Приказ управления имущественных отношений администрации Красноярского края от 09.03.2005 № 06-172п',,'38246,97',,
 (2,'24:53:0110365:5796','Сооружение','Наружные сети электроснабжения','1.1. Сооружения электроэнергетики',138,2022,'Российская Федерация, Красноярский край, г. Минусинск, ул. Трегубенко, д. 63 Б','П12000012395',2518124.62); #','24:53:0110365:5796-24/095/2023-1',14.03.2023,'Разрешение на ввод объекта в эксплуатацию, № 24-RU24310000-54-2022, выдан 19.12.2022','КГАУ "ЦСП"','оперативное управление','24:53:0110365:5796-24/122/2023-2',13.04.2023,'Приказ агентства по управлению государственным имуществом Красноярского края от 07.04.2023 № 11-452п',,'2057667,66',,
 
+
 INSERT INTO laws (object_id, owner_id, right_type, law_registration_date, owner_registration_number, owner_right_document)
 VALUES
 (
@@ -613,11 +614,153 @@ SET @@log_bin = 0;
 SET GLOBAL log_bin = 0;
 
 # Присвоили (получили извне) owner_id и object_id, которыt хотим проверить на предмет, что 
-SET @owner_id = 4;
-SET @object_id = 269;
+SET @owner_id = 2;
+SET @_object_id = 269;
 
 SELECT @owner_id = (
 	SELECT object_owner_id
-	FROM objects;
-	WHERE id = @object_id
+	FROM objects
+	WHERE objects.id = @_object_id
+);
+
+
+# Создали TRIGGER STATMENT для валидации данных на предмет, чтобы операция падала в ошибку, если дата UPDATE / INSERT не валидна
+DELIMITER //
+
+CREATE TRIGGER check_registration_date
+BEFORE UPDATE
+ON laws FOR EACH ROW
+BEGIN
+    DECLARE message VARCHAR(100);
+    IF NEW.law_registration_date > CURRENT_DATE() THEN
+        SET message = CONCAT('Update has been cancelled. New value: ', 
+                             NEW.law_registration_date, 
+                             ' is incorrect. Old value: ', 
+                             OLD.law_registration_date, 
+                             ' retained.');
+        SIGNAL SQLSTATE '45000'
+            SET MESSAGE_TEXT = message;
+    END IF;
+END//
+
+DELIMITER ;
+
+# Попробовали UPDATE данные поля law_registration_date изменить на дату, больше текущей и поймали SQL Error [45000], которую сами написали в TRIGGER STATMENT
+UPDATE laws
+SET law_registration_date = '2015-10-01'
+WHERE id = 16;
+
+# Создали TRANSACTION STATMENT, который связывает две INSERT транзакции, частично обходя тем самым необходимость заполнять зависимые таблицы из-за PRIMARY KEY
+START TRANSACTION;
+	INSERT INTO owners (name, inn, ogrn, adress, telephone, email)
+	VALUES ('semp_name',0000000006,0000000000006,'semp_adress',33910000000,'semp@pemp.pemp');
+	
+	#SET @_owner_id = (SELECT max(id) FROM owners);
+	SET @_owner_id = LAST_INSERT_ID();
+	SELECT @_owner_id;
+	
+	INSERT INTO objects (object_owner_id, kadastr_num, object_type, object_name, `assignment`, `space`, build_year, adress, rnki_number, carrying_ammount)
+	VALUES (@_owner_id,'00:00:0000000:001','Сооружение','temp_name','temp_assignmnt',001.0, 2000,'temp_adress','П00000000000',1);
+	SELECT id, object_owner_id, kadastr_num FROM objects WHERE id > 280;
+COMMIT;
+
+# Проверили результат предыдущей TRANSACTION STATMENT
+SELECT
+	owners.id,
+	name,
+	inn,
+	objects.id,
+	object_owner_id,
+	kadastr_num
+FROM owners
+JOIN objects ON objects.object_owner_id = owners.id
+WHERE owners.id >14;
+
+# Создаём хардкорную версию PROCEDURE с встроенным SQL Exception, прописывая передаваемые данные прям в тело PROCEDURE
+DROP PROCEDURE realty_v04._object_owner;
+CREATE PROCEDURE realty_v04._object_owner(OUT proc_result VARCHAR(200))
+BEGIN
+	DECLARE has_error BIT DEFAULT 0;
+	
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+	BEGIN
+		SET has_error = 1;
+	END;
+	
+	START TRANSACTION;
+		INSERT INTO owners (name, inn)
+		VALUES ('memp_name',0000000010);
+		
+		#SET @_owner_id = (SELECT max(id) FROM owners);
+		SET @_owner_id = LAST_INSERT_ID();
+		SELECT @_owner_id;
+		
+		INSERT INTO objects (object_owner_id, kadastr_num, object_type, object_name)
+		VALUES (@_owner_id,'40:00:0000000:111','Здание','memp_name');
+		#SELECT id, object_owner_id, kadastr_num FROM objects WHERE id > 280;
+	
+	IF has_error THEN
+		SET proc_result = 'ERRRRRRRRRRRR0000000RRRRRR';
+		ROLLBACK;
+	ELSE
+		SET proc_result = 'OOOOOOOOOOOOOOOOOOOOOOOOOK';
+		COMMIT;
+	END IF;
+END
+
+CALL _object_owner(@proc_result);
+SELECT @proc_result;
+		
+
+# Создаём более автоматизированную процедуру, передавая аргументы функции 
+DROP PROCEDURE realty_v04._object_owner_at;
+CREATE PROCEDURE realty_v04._object_owner_at(
+
+	_name VARCHAR(400),
+	_inn BIGINT,
+	_kadastr_num VARCHAR(30),
+	_object_type ENUM ('Здание','Сооружение','Помещение','Земельный участок'),
+	_object_name VARCHAR(300),
+	
+	OUT proc_result VARCHAR(200)
+)
+BEGIN
+	DECLARE has_error BIT DEFAULT 0;
+	DECLARE code VARCHAR(100);
+	DECLARE error_string VARCHAR(100);
+	
+	DECLARE CONTINUE HANDLER FOR SQLEXCEPTION
+	BEGIN
+		SET has_error = 1;
+	
+		GET stacked DIAGNOSTICS CONDITION 1
+			code = RETURNED_SQLSTATE, error_string = MESSAGE_TEXT;
+		
+		SET proc_result = CONCAT('_E_R_R_O_R_ occured! Code: ',code,'Text: ',error_string);
+	END;
+	
+	START TRANSACTION;
+		INSERT INTO owners (name, inn)
+		VALUES (_name,_inn);
+		
+		#SET @_owner_id = (SELECT max(id) FROM owners);
+		SET @_owner_id = LAST_INSERT_ID();
+		SELECT @_owner_id;
+		
+		INSERT INTO objects (object_owner_id, kadastr_num, object_type, object_name)
+		VALUES (@_owner_id, _kadastr_num, _object_type, _object_name);
+		#SELECT id, object_owner_id, kadastr_num FROM objects WHERE id > 280;
+	
+	IF has_error THEN
+		#SET proc_result = '_E_R_R_O_R_'; # Закомментировали эту строку, потому как сделали расширенное сообщение об ошибке посресдством GET stacked DIAGN0OSTICS CONDITION
+		ROLLBACK;
+	ELSE
+		SET proc_result = '_O_K_';
+		COMMIT;
+	END IF;
+END
+
+CALL _object_owner_at('FIFO',0600000060,'11:22:33333333:44','Здание','Night club',@proc_result);
+SELECT @proc_result;
+
 );
